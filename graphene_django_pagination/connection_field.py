@@ -123,7 +123,7 @@ def connection_from_list_slice(
 
 
 def connection_from_list_ordering(items_list, ordering, connection):
-    field, order = ordering.split(',')
+    field, order = ordering.replace(' ', '').split(',')
     field = re.sub(r'(?<!^)(?=[A-Z])', '_', field).lower()
     order = '-' if order == 'desc' else ''
 
