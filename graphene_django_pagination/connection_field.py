@@ -9,6 +9,10 @@ from django.db.models.query import QuerySet
 
 from . import PaginationConnection, PageInfoExtra
 
+import logging
+
+_logger = logging.getLogger(__name__)
+
 
 class DjangoPaginationConnectionField(DjangoFilterConnectionField):
     def __init__(
@@ -65,7 +69,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         ordering = args.get("ordering")
 
         if ordering:
-            iterable = connection_from_list_ordering(iterable, ordering)
+            iterable = connection_from_list_ordering(iterable, ordering, connection)
 
         connection = connection_from_list_slice(
             iterable,
@@ -118,10 +122,16 @@ def connection_from_list_slice(
         )
 
 
-def connection_from_list_ordering(items_list, ordering):
+def connection_from_list_ordering(items_list, ordering, connection):
     field, order = ordering.split(',')
-
-    order = '-' if order == 'desc' else ''
     field = re.sub(r'(?<!^)(?=[A-Z])', '_', field).lower()
+    order = '-' if order == 'desc' else ''
 
-    return items_list.order_by(f'{order}{field}')
+    if (connection
+        and connection._meta
+        and connection._meta.node
+        and hasattr(connection._meta.node, 'ordering')
+        and callable(getattr(connection._meta.node, 'ordering'))):
+        return connection._meta.node.ordering(items_list, field, order)
+    else:
+        return items_list.order_by(f'{order}{field}')
