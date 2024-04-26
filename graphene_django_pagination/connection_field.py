@@ -61,10 +61,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
     def resolve_connection(cls, connection, args, iterable, max_limit=None):
         iterable = maybe_queryset(iterable)
 
-        if isinstance(iterable, QuerySet):
-            _len = iterable.count()
-        else:
-            _len = len(iterable)
+        _len = len(iterable)
 
         ordering = args.get("ordering")
 
