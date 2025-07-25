@@ -124,7 +124,8 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         return res
 
 
-def connection_from_list_slice(list_slice, args=None, connection_type=None, pageinfo_type=None, info=None,
+def connection_from_list_slice(
+    list_slice, args=None, connection_type=None, pageinfo_type=None, info=None,
 ):
     args = args or {}
     limit = args.get("limit", None)
