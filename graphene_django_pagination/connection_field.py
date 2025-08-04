@@ -1,5 +1,6 @@
 import re
 import math
+from functools import partial
 
 from graphene import Int, String
 from graphene_django.filter import DjangoFilterConnectionField
@@ -8,10 +9,6 @@ from django.core.paginator import Paginator
 from django.db.models.query import QuerySet
 
 from . import PaginationConnection, PageInfoExtra
-
-import logging
-
-_logger = logging.getLogger(__name__)
 
 
 class DjangoPaginationConnectionField(DjangoFilterConnectionField):
@@ -53,12 +50,15 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
                 name = '{}NodeConnection'.format(self._type._meta.name)
 
             def resolve_total_count(self, info, **kwargs):
+                """Resolve the total count of items, using cache if available."""
+                if hasattr(info.context, "_CachedDjangoPaginationField"):
+                    return info.context._CachedDjangoPaginationField
                 return self.iterable.count()
 
         return NodeConnection
 
     @classmethod
-    def resolve_connection(cls, connection, args, iterable, max_limit=None):
+    def _resolve_connection(cls, connection, args, iterable, max_limit=None, info=None):
         iterable = maybe_queryset(iterable)
 
         if isinstance(iterable, QuerySet):
@@ -76,15 +76,56 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
             args,
             connection_type=connection,
             pageinfo_type=PageInfoExtra,
+            info=info,
         )
         connection.iterable = iterable
         connection.length = _len
 
         return connection
 
+    @classmethod
+    def resolve_connection(cls, connection, args, iterable, max_limit=None):
+        """Hacky way to add info context to the connection resolver."""
+        return partial(
+            cls._resolve_connection,
+            connection,
+            args,
+            iterable,
+            max_limit=max_limit,
+        )
+
+    @classmethod
+    def connection_resolver(
+        cls,
+        resolver,
+        connection,
+        default_manager,
+        queryset_resolver,
+        max_limit,
+        enforce_first_or_last,
+        root,
+        info,
+        **args,
+    ):
+        """Resolve the connection, ensuring the info context is passed to partials."""
+        res = super().connection_resolver(
+            resolver,
+            connection,
+            default_manager,
+            queryset_resolver,
+            max_limit,
+            enforce_first_or_last,
+            root,
+            info,
+            **args,
+        )
+        if isinstance(res, partial):
+            return res(info=info)
+        return res
+
 
 def connection_from_list_slice(
-    list_slice, args=None, connection_type=None, pageinfo_type=None
+    list_slice, args=None, connection_type=None, pageinfo_type=None, info=None,
 ):
     args = args or {}
     limit = args.get("limit", None)
@@ -112,6 +153,8 @@ def connection_from_list_slice(
             else page_num
         )
         page = paginator.page(page_num)
+
+        info.context._CachedDjangoPaginationField = paginator.count
 
         return connection_type(
             results=_slice,

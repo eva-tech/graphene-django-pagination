@@ -1,0 +1,6 @@
+pytest
+graphene==2.1.9
+pytest-mock
+django-filter==22.1
+graphene-django==2.15.0
+Django==3.2.25
