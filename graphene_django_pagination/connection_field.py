@@ -41,7 +41,6 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
 
     @property
     def type(self):
-
         class NodeConnection(PaginationConnection):
             total_count = Int()
 
