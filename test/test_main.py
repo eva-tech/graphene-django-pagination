@@ -296,6 +296,36 @@ class TestPaginationE2E:
         assert data["pageInfo"]["hasNextPage"] == False
         assert data["pageInfo"]["hasPreviousPage"] == True
 
+    def test_non_aligned_offset(self, client, sample_data):
+        """Test pagination with non-aligned offset (offset not divisible by limit)"""
+        # With 8 items total, offset=7, limit=3 should return 1 item (index 7)
+        # This tests the page number calculation fix for non-aligned offsets
+        query = """
+        query {
+            items(limit: 3, offset: 7) {
+                results {
+                    id
+                    name
+                    value
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        result = client.execute(query)
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+        data = result["data"]["items"]
+        assert len(data["results"]) == 1  # Only 1 item left (index 7)
+        assert data["totalCount"] == 8
+        assert data["pageInfo"]["hasNextPage"] == False  # We're at the end
+        assert data["pageInfo"]["hasPreviousPage"] == True  # offset > 0
+
 
 @pytest.mark.django_db
 class TestErrorHandling:

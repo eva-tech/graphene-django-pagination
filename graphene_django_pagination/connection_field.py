@@ -1,5 +1,4 @@
 import re
-import math
 from functools import partial
 
 from graphene import Int, String
@@ -119,7 +118,11 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
 
 
 def connection_from_list_slice(
-    list_slice, args=None, connection_type=None, pageinfo_type=None, info=None,
+    iterable,
+    args=None,
+    connection_type=None,
+    pageinfo_type=None,
+    info=None,
 ):
     args = args or {}
     limit = args.get("limit", None)
@@ -127,7 +130,7 @@ def connection_from_list_slice(
 
     if limit is None:
         return connection_type(
-            results=list_slice,
+            results=iterable,
             page_info=pageinfo_type(
                 has_previous_page=False,
                 has_next_page=False
@@ -138,7 +141,7 @@ def connection_from_list_slice(
         assert limit > 0, "Limit must be positive integer greater than 0"
 
         # Fetch the requested slice
-        _slice = list_slice[offset:(offset+limit)]
+        _slice = iterable[offset:(offset+limit)]
         _slice_list = list(_slice)
         actual_count = len(_slice_list)
 
@@ -162,23 +165,21 @@ def connection_from_list_slice(
         else:
             # We got exactly 'limit' items, so we need to use the paginator
             # to determine if there are more pages (requires COUNT query)
-            paginator = Paginator(list_slice, limit)
+            paginator = Paginator(iterable, limit)
+            total_count = paginator.count
 
-            page_num = math.ceil(offset/limit) + 1
-            page_num = (
-                paginator.num_pages
-                if page_num > paginator.num_pages
-                else page_num
-            )
-            page = paginator.page(page_num)
+            # Calculate has_previous/has_next based on offset, not page numbers
+            # since offsets don't necessarily align with page boundaries
+            has_previous_page = offset > 0
+            has_next_page = (offset + limit) < total_count
 
-            info.context._CachedDjangoPaginationField = paginator.count
+            info.context._CachedDjangoPaginationField = total_count
 
             return connection_type(
                 results=_slice_list,
                 page_info=pageinfo_type(
-                    has_previous_page=page.has_previous(),
-                    has_next_page=page.has_next()
+                    has_previous_page=has_previous_page,
+                    has_next_page=has_next_page
                 )
             )
 
