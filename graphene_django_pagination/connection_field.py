@@ -137,26 +137,50 @@ def connection_from_list_slice(
         assert isinstance(limit, int), "Limit must be of type int"
         assert limit > 0, "Limit must be positive integer greater than 0"
 
-        paginator = Paginator(list_slice, limit)
+        # Fetch the requested slice
         _slice = list_slice[offset:(offset+limit)]
+        _slice_list = list(_slice)
+        actual_count = len(_slice_list)
 
-        page_num = math.ceil(offset/limit) + 1
-        page_num = (
-            paginator.num_pages
-            if page_num > paginator.num_pages
-            else page_num
-        )
-        page = paginator.page(page_num)
+        # Optimization: skip COUNT query when we can determine we're on the last page:
+        # 1. offset=0 and got 0 items → empty dataset, total=0
+        # 2. got at least 1 item but < limit → last page, total=offset+actual_count
+        if (actual_count == 0 and offset == 0) or (0 < actual_count < limit):
+            total_count = offset + actual_count
+            has_next_page = False
+            has_previous_page = offset > 0
 
-        info.context._CachedDjangoPaginationField = paginator.count
+            info.context._CachedDjangoPaginationField = total_count
 
-        return connection_type(
-            results=_slice,
-            page_info=pageinfo_type(
-                has_previous_page=page.has_previous(),
-                has_next_page=page.has_next()
+            return connection_type(
+                results=_slice_list,
+                page_info=pageinfo_type(
+                    has_previous_page=has_previous_page,
+                    has_next_page=has_next_page
+                )
             )
-        )
+        else:
+            # We got exactly 'limit' items, so we need to use the paginator
+            # to determine if there are more pages (requires COUNT query)
+            paginator = Paginator(list_slice, limit)
+
+            page_num = math.ceil(offset/limit) + 1
+            page_num = (
+                paginator.num_pages
+                if page_num > paginator.num_pages
+                else page_num
+            )
+            page = paginator.page(page_num)
+
+            info.context._CachedDjangoPaginationField = paginator.count
+
+            return connection_type(
+                results=_slice_list,
+                page_info=pageinfo_type(
+                    has_previous_page=page.has_previous(),
+                    has_next_page=page.has_next()
+                )
+            )
 
 
 def connection_from_list_ordering(items_list, ordering, connection):
