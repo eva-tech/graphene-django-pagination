@@ -118,7 +118,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
 
 
 def connection_from_list_slice(
-    iterable,
+    list_slice,
     args=None,
     connection_type=None,
     pageinfo_type=None,
@@ -130,7 +130,7 @@ def connection_from_list_slice(
 
     if limit is None:
         return connection_type(
-            results=iterable,
+            results=list_slice,
             page_info=pageinfo_type(
                 has_previous_page=False,
                 has_next_page=False
@@ -141,7 +141,7 @@ def connection_from_list_slice(
         assert limit > 0, "Limit must be positive integer greater than 0"
 
         # Fetch the requested slice
-        _slice = iterable[offset:(offset+limit)]
+        _slice = list_slice[offset:(offset+limit)]
         _slice_list = list(_slice)
         actual_count = len(_slice_list)
 
@@ -165,7 +165,7 @@ def connection_from_list_slice(
         else:
             # We got exactly 'limit' items, so we need to use the paginator
             # to determine if there are more pages (requires COUNT query)
-            paginator = Paginator(iterable, limit)
+            paginator = Paginator(list_slice, limit)
             total_count = paginator.count
 
             # Calculate has_previous/has_next based on offset, not page numbers
