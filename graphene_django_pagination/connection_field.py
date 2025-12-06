@@ -117,6 +117,36 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         return res
 
 
+def _store_result_ids_on_context(list_slice, result_list, info):
+    """Store result IDs on context for DataLoader batching.
+    
+    After the queryset is evaluated, extract object IDs and store them
+    on the request context. This enables DataLoaders to batch-fetch
+    related data in a single query instead of N+1 queries.
+    
+    The IDs are stored as: info.context._<model_name>_result_ids
+    Example: info.context._study_result_ids = [uuid1, uuid2, ...]
+    """
+    if not info or not result_list:
+        return
+    
+    # Get model name from queryset
+    if isinstance(list_slice, QuerySet):
+        model_name = list_slice.model.__name__.lower()
+    elif result_list and hasattr(result_list[0], '_meta'):
+        model_name = result_list[0]._meta.model.__name__.lower()
+    else:
+        return
+    
+    # Extract IDs from already-fetched objects (in-memory, no DB query)
+    try:
+        ids = [obj.id for obj in result_list if hasattr(obj, 'id')]
+        if ids:
+            setattr(info.context, f"_{model_name}_result_ids", ids)
+    except (AttributeError, TypeError):
+        pass  # Silently fail if objects don't have IDs
+
+
 def connection_from_list_slice(
     list_slice,
     args=None,
@@ -129,8 +159,12 @@ def connection_from_list_slice(
     offset = args.get("offset", 0)
 
     if limit is None:
+        # Evaluate queryset and store IDs for DataLoaders
+        result_list = list(list_slice) if isinstance(list_slice, QuerySet) else list_slice
+        _store_result_ids_on_context(list_slice, result_list, info)
+        
         return connection_type(
-            results=list_slice,
+            results=result_list,
             page_info=pageinfo_type(
                 has_previous_page=False,
                 has_next_page=False
@@ -144,6 +178,9 @@ def connection_from_list_slice(
         _slice = list_slice[offset:(offset+limit)]
         _slice_list = list(_slice)
         actual_count = len(_slice_list)
+        
+        # Store IDs for DataLoaders (in-memory extraction, no extra query)
+        _store_result_ids_on_context(list_slice, _slice_list, info)
 
         # Optimization: skip COUNT query when we can determine we're on the last page:
         # 1. offset=0 and got 0 items → empty dataset, total=0
