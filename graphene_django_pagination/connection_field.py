@@ -159,7 +159,7 @@ def connection_from_list_slice(
         info.context._CachedDjangoPaginationField = paginator.count
         try:
             if paginator.count >= MAX_LIMIT_TO_WARN:
-                logger.error(f"QUERY_SIZE_TEST_WARNING: Query returned {len(list_slice)} results, which is greater than {MAX_LIMIT_TO_WARN}. This may cause performance issues. Query: {info.operation.name.value}")
+                logger.error(f"QUERY_SIZE_TEST_WARNING: Query returned {paginator.count} results, which is greater than {MAX_LIMIT_TO_WARN}. This may cause performance issues. Query: {info.operation.name.value}")
         except:
             pass
         return connection_type(
