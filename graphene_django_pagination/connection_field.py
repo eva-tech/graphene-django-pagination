@@ -129,8 +129,11 @@ def connection_from_list_slice(
     offset = args.get("offset", 0)
 
     if limit is None:
-        if len(list_slice) >= MAX_LIMIT_TO_WARN:
-            logger.error(f"QUERY_SIZE_TEST_WARNING: Query returned {len(list_slice)} results, which is greater than {MAX_LIMIT_TO_WARN}. This may cause performance issues.")
+        try:
+            logger.error(f"QUERY_SIZE_TEST_WARNING: Unlimited query for query: {info.operation.name.value}")
+        except:
+            pass
+        
         return connection_type(
             results=list_slice,
             page_info=pageinfo_type(
@@ -154,9 +157,11 @@ def connection_from_list_slice(
         page = paginator.page(page_num)
 
         info.context._CachedDjangoPaginationField = paginator.count
-        if paginator.count >= MAX_LIMIT_TO_WARN:
-            logger.error(f"QUERY_SIZE_TEST_WARNING: Query returned {len(list_slice)} results, which is greater than {MAX_LIMIT_TO_WARN}. This may cause performance issues.")
-
+        try:
+            if paginator.count >= MAX_LIMIT_TO_WARN:
+                logger.error(f"QUERY_SIZE_TEST_WARNING: Query returned {len(list_slice)} results, which is greater than {MAX_LIMIT_TO_WARN}. This may cause performance issues. Query: {info.operation.name.value}")
+        except:
+            pass
         return connection_type(
             results=_slice,
             page_info=pageinfo_type(
