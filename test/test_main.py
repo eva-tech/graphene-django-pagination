@@ -410,6 +410,125 @@ class TestTotalCount:
 
 
 @pytest.mark.django_db
+class TestMaxLimit:
+    """Test max_limit enforcement"""
+
+    def test_limit_capped_to_max_limit(self, client, sample_data):
+        """Test that limit is capped to max_limit when exceeding it"""
+        # items_limited has max_limit=3, so requesting limit=10 should return only 3
+        query = """
+        query {
+            itemsLimited(limit: 10) {
+                results {
+                    id
+                    name
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        result = client.execute(query)
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+        data = result["data"]["itemsLimited"]
+        assert len(data["results"]) == 3  # Capped to max_limit
+        assert data["totalCount"] == 8
+        assert data["pageInfo"]["hasNextPage"] == True
+        assert data["pageInfo"]["hasPreviousPage"] == False
+
+    def test_no_limit_defaults_to_max_limit(self, client, sample_data):
+        """Test that when no limit is provided, max_limit is used as default"""
+        # items_limited has max_limit=3, so not providing limit should return 3
+        query = """
+        query {
+            itemsLimited {
+                results {
+                    id
+                    name
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        result = client.execute(query)
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+        data = result["data"]["itemsLimited"]
+        assert len(data["results"]) == 3  # Defaults to max_limit
+        assert data["totalCount"] == 8
+        assert data["pageInfo"]["hasNextPage"] == True
+        assert data["pageInfo"]["hasPreviousPage"] == False
+
+    def test_limit_within_max_limit_works(self, client, sample_data):
+        """Test that limit within max_limit works normally"""
+        # items_limited has max_limit=3, requesting limit=2 should work
+        query = """
+        query {
+            itemsLimited(limit: 2) {
+                results {
+                    id
+                    name
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        result = client.execute(query)
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+        data = result["data"]["itemsLimited"]
+        assert len(data["results"]) == 2  # Uses requested limit
+        assert data["totalCount"] == 8
+        assert data["pageInfo"]["hasNextPage"] == True
+        assert data["pageInfo"]["hasPreviousPage"] == False
+
+    def test_max_limit_with_offset(self, client, sample_data):
+        """Test max_limit enforcement works correctly with offset"""
+        # items_limited has max_limit=3, request limit=5 with offset=4
+        query = """
+        query {
+            itemsLimited(limit: 5, offset: 4) {
+                results {
+                    id
+                    name
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        result = client.execute(query)
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+        data = result["data"]["itemsLimited"]
+        # With offset=4 and 8 total items, there are 4 items left
+        # But max_limit=3, so we should get min(3, 4) = 3 items
+        assert len(data["results"]) == 3
+        assert data["totalCount"] == 8
+        assert data["pageInfo"]["hasNextPage"] == True  # offset(4) + limit(3) = 7 < 8
+        assert data["pageInfo"]["hasPreviousPage"] == True
+
+
+@pytest.mark.django_db
 class TestCountOptimization:
     """Test count query optimization when items < limit"""
 

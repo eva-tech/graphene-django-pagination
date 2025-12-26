@@ -32,10 +32,25 @@ class TestItemType(DjangoObjectType):
         }
 
 
+class TestItemLimitedType(DjangoObjectType):
+    class Meta:
+        model = TestItem
+        name = 'TestItemLimited'
+        fields = ('id', 'name', 'value')
+        filter_fields = {
+            'name': ['exact', 'icontains'],
+            'value': ['exact', 'gte', 'lte'],
+        }
+
+
 class Query(ObjectType):
     items = DjangoPaginationConnectionField(TestItemType)
+    items_limited = DjangoPaginationConnectionField(TestItemLimitedType, max_limit=3)
     
     def resolve_items(self, info, **kwargs):
+        return TestItem.objects.all()
+
+    def resolve_items_limited(self, info, **kwargs):
         return TestItem.objects.all()
 
 

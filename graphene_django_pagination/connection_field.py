@@ -2,9 +2,9 @@ import re
 from functools import partial
 
 from django.core.paginator import Paginator
-from django.db.models.query import QuerySet
 from graphene import Int, String
 from graphene_django.filter import DjangoFilterConnectionField
+from graphene_django.settings import graphene_settings
 from graphene_django.utils import maybe_queryset
 
 from . import PageInfoExtra, PaginationConnection
@@ -18,6 +18,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         order_by=None,
         extra_filter_meta=None,
         filterset_class=None,
+        hard_limit=None,
         *args,
         **kwargs,
     ):
@@ -27,6 +28,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         self._filterset_class = None
         self._extra_filter_meta = extra_filter_meta
         self._base_args = None
+        self._hard_limit = hard_limit or graphene_settings.RELAY_CONNECTION_MAX_LIMIT
 
         kwargs.setdefault("limit", Int(description="Query limit"))
         kwargs.setdefault("offset", Int(description="Query offset"))
@@ -66,6 +68,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
             connection_type=connection,
             pageinfo_type=PageInfoExtra,
             info=info,
+            max_limit=max_limit,
         )
         connection.iterable = iterable
 
@@ -118,10 +121,18 @@ def connection_from_list_slice(
     connection_type=None,
     pageinfo_type=None,
     info=None,
+    max_limit=None,
 ):
     args = args or {}
     limit = args.get("limit", None)
     offset = args.get("offset", 0)
+
+    # Enforce max_limit if set
+    if max_limit is not None:
+        if limit is None:
+            limit = max_limit
+        else:
+            limit = min(limit, max_limit)
 
     if limit is None:
         return connection_type(
