@@ -1,4 +1,6 @@
 from django.test.client import RequestFactory
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
 import pytest
 
 from .fake_project import TestItem, schema
@@ -294,6 +296,36 @@ class TestPaginationE2E:
         assert data["pageInfo"]["hasNextPage"] == False
         assert data["pageInfo"]["hasPreviousPage"] == True
 
+    def test_non_aligned_offset(self, client, sample_data):
+        """Test pagination with non-aligned offset (offset not divisible by limit)"""
+        # With 8 items total, offset=7, limit=3 should return 1 item (index 7)
+        # This tests the page number calculation fix for non-aligned offsets
+        query = """
+        query {
+            items(limit: 3, offset: 7) {
+                results {
+                    id
+                    name
+                    value
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        result = client.execute(query)
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+        data = result["data"]["items"]
+        assert len(data["results"]) == 1  # Only 1 item left (index 7)
+        assert data["totalCount"] == 8
+        assert data["pageInfo"]["hasNextPage"] == False  # We're at the end
+        assert data["pageInfo"]["hasPreviousPage"] == True  # offset > 0
+
 
 @pytest.mark.django_db
 class TestErrorHandling:
@@ -375,3 +407,127 @@ class TestTotalCount:
             result = client.execute(query)
             assert not result.get("errors"), f"Errors: {result.get('errors')}"
             assert result["data"]["items"]["totalCount"] == 8
+
+
+@pytest.mark.django_db
+class TestCountOptimization:
+    """Test count query optimization when items < limit"""
+
+    def test_last_page_skips_count_query(self, client, sample_data):
+        """Test that COUNT query is skipped when on last page with items < limit"""
+        # Query the last page where we have 2 items but limit is 3
+        query = """
+        query {
+            items(limit: 3, offset: 6) {
+                results {
+                    id
+                    name
+                    value
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        with CaptureQueriesContext(connection) as context:
+            result = client.execute(query)
+            assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+            # Verify the results are correct
+            data = result["data"]["items"]
+            assert len(data["results"]) == 2
+            assert data["totalCount"] == 8
+            assert data["pageInfo"]["hasNextPage"] == False
+            assert data["pageInfo"]["hasPreviousPage"] == True
+
+            # Check that no COUNT query was executed
+            # We should only have one SELECT query for fetching the items
+            queries = [q['sql'] for q in context.captured_queries]
+            count_queries = [q for q in queries if 'COUNT' in q.upper()]
+
+            assert len(count_queries) == 0, f"Expected no COUNT queries, but found: {count_queries}"
+
+    def test_first_page_partial_skips_count_query(self, client):
+        """Test that COUNT query is skipped on first page when total items < limit"""
+        # Create only 3 items but request limit of 5
+        TestItem.objects.all().delete()
+        items = [
+            TestItem(name="Apple", value=10),
+            TestItem(name="Banana", value=5),
+            TestItem(name="Cherry", value=15),
+        ]
+        TestItem.objects.bulk_create(items)
+
+        query = """
+        query {
+            items(limit: 5, offset: 0) {
+                results {
+                    id
+                    name
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        with CaptureQueriesContext(connection) as context:
+            result = client.execute(query)
+            assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+            # Verify the results are correct
+            data = result["data"]["items"]
+            assert len(data["results"]) == 3
+            assert data["totalCount"] == 3
+            assert data["pageInfo"]["hasNextPage"] == False
+            assert data["pageInfo"]["hasPreviousPage"] == False
+
+            # Check that no COUNT query was executed
+            queries = [q['sql'] for q in context.captured_queries]
+            count_queries = [q for q in queries if 'COUNT' in q.upper()]
+
+            assert len(count_queries) == 0, f"Expected no COUNT queries, but found: {count_queries}"
+
+    def test_middle_page_with_full_limit_does_count_query(self, client, sample_data):
+        """Test that COUNT query IS executed when we get exactly 'limit' items (not on last page)"""
+        # Query a middle page where we'll get exactly 'limit' items
+        # Since items == limit, we need COUNT to check if there are more pages
+        query = """
+        query {
+            items(limit: 3, offset: 3) {
+                results {
+                    id
+                    name
+                }
+                pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                }
+                totalCount
+            }
+        }
+        """
+
+        with CaptureQueriesContext(connection) as context:
+            result = client.execute(query)
+            assert not result.get("errors"), f"Errors: {result.get('errors')}"
+
+            # Verify the results are correct
+            data = result["data"]["items"]
+            assert len(data["results"]) == 3
+            assert data["totalCount"] == 8
+            assert data["pageInfo"]["hasNextPage"] == True
+            assert data["pageInfo"]["hasPreviousPage"] == True
+
+            # Check that a COUNT query WAS executed (since we got exactly 'limit' items)
+            queries = [q['sql'] for q in context.captured_queries]
+            count_queries = [q for q in queries if 'COUNT' in q.upper()]
+
+            assert len(count_queries) >= 1, f"Expected at least one COUNT query for middle page, but found: {count_queries}"
