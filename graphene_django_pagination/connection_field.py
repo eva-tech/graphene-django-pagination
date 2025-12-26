@@ -1,13 +1,13 @@
 import re
 from functools import partial
 
+from django.core.paginator import Paginator
+from django.db.models.query import QuerySet
 from graphene import Int, String
 from graphene_django.filter import DjangoFilterConnectionField
 from graphene_django.utils import maybe_queryset
-from django.core.paginator import Paginator
-from django.db.models.query import QuerySet
 
-from . import PaginationConnection, PageInfoExtra
+from . import PageInfoExtra, PaginationConnection
 
 
 class DjangoPaginationConnectionField(DjangoFilterConnectionField):
@@ -19,7 +19,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         extra_filter_meta=None,
         filterset_class=None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         self._type = type
         self._fields = fields
@@ -32,21 +32,16 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         kwargs.setdefault("offset", Int(description="Query offset"))
         kwargs.setdefault("ordering", String(description="Query order"))
 
-        super(DjangoPaginationConnectionField, self).__init__(
-            type,
-            *args,
-            **kwargs
-        )
+        super(DjangoPaginationConnectionField, self).__init__(type, *args, **kwargs)
 
     @property
     def type(self):
-
         class NodeConnection(PaginationConnection):
             total_count = Int()
 
             class Meta:
                 node = self._type
-                name = '{}NodeConnection'.format(self._type._meta.name)
+                name = "{}NodeConnection".format(self._type._meta.name)
 
             def resolve_total_count(self, info, **kwargs):
                 """Resolve the total count of items, using cache if available."""
@@ -131,17 +126,14 @@ def connection_from_list_slice(
     if limit is None:
         return connection_type(
             results=list_slice,
-            page_info=pageinfo_type(
-                has_previous_page=False,
-                has_next_page=False
-            )
+            page_info=pageinfo_type(has_previous_page=False, has_next_page=False),
         )
     else:
         assert isinstance(limit, int), "Limit must be of type int"
         assert limit > 0, "Limit must be positive integer greater than 0"
 
         # Fetch the requested slice
-        _slice = list_slice[offset:(offset+limit)]
+        _slice = list_slice[offset : (offset + limit)]
         _slice_list = list(_slice)
         actual_count = len(_slice_list)
 
@@ -158,9 +150,8 @@ def connection_from_list_slice(
             return connection_type(
                 results=_slice_list,
                 page_info=pageinfo_type(
-                    has_previous_page=has_previous_page,
-                    has_next_page=has_next_page
-                )
+                    has_previous_page=has_previous_page, has_next_page=has_next_page
+                ),
             )
         else:
             # We got exactly 'limit' items, so we need to use the paginator
@@ -178,22 +169,23 @@ def connection_from_list_slice(
             return connection_type(
                 results=_slice_list,
                 page_info=pageinfo_type(
-                    has_previous_page=has_previous_page,
-                    has_next_page=has_next_page
-                )
+                    has_previous_page=has_previous_page, has_next_page=has_next_page
+                ),
             )
 
 
 def connection_from_list_ordering(items_list, ordering, connection):
-    field, order = ordering.replace(' ', '').split(',')
-    field = re.sub(r'(?<!^)(?=[A-Z])', '_', field).lower()
-    order = '-' if order == 'desc' else ''
+    field, order = ordering.replace(" ", "").split(",")
+    field = re.sub(r"(?<!^)(?=[A-Z])", "_", field).lower()
+    order = "-" if order == "desc" else ""
 
-    if (connection
+    if (
+        connection
         and connection._meta
         and connection._meta.node
-        and hasattr(connection._meta.node, 'ordering')
-        and callable(getattr(connection._meta.node, 'ordering'))):
+        and hasattr(connection._meta.node, "ordering")
+        and callable(getattr(connection._meta.node, "ordering"))
+    ):
         return connection._meta.node.ordering(items_list, field, order)
     else:
-        return items_list.order_by(f'{order}{field}')
+        return items_list.order_by(f"{order}{field}")
