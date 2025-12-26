@@ -5,6 +5,7 @@ import pytest
 
 from .fake_project import TestItem, schema
 
+import logging
 
 @pytest.fixture
 def sample_data():
@@ -526,6 +527,26 @@ class TestMaxLimit:
         assert data["totalCount"] == 8
         assert data["pageInfo"]["hasNextPage"] == True  # offset(4) + limit(3) = 7 < 8
         assert data["pageInfo"]["hasPreviousPage"] == True
+
+    def test_logs_warning_when_limit_exceeds_max(self, client, sample_data, caplog):
+        """Test that a warning is logged when limit exceeds max_limit"""
+
+        query = """
+        query TestQuery {
+            itemsLimited(limit: 10) {
+                results {
+                    id
+                }
+            }
+        }
+        """
+
+        with caplog.at_level(logging.WARNING):
+            result = client.execute(query)
+
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        assert "limit 10 exceeded max_limit 3" in caplog.text
+        assert "TestQuery" in caplog.text
 
 
 @pytest.mark.django_db

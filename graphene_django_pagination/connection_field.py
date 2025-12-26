@@ -1,3 +1,4 @@
+import logging
 import re
 from functools import partial
 
@@ -8,6 +9,8 @@ from graphene_django.settings import graphene_settings
 from graphene_django.utils import maybe_queryset
 
 from . import PageInfoExtra, PaginationConnection
+
+logger = logging.getLogger(__name__)
 
 
 class DjangoPaginationConnectionField(DjangoFilterConnectionField):
@@ -131,8 +134,19 @@ def connection_from_list_slice(
     if max_limit is not None:
         if limit is None:
             limit = max_limit
-        else:
-            limit = min(limit, max_limit)
+        elif limit > max_limit:
+            try:
+                operation_name = info.operation.name.value
+            except Exception:
+                operation_name = "unknown"
+            logger.warning(
+                "Query '%s' limit %d exceeded max_limit %d, capping to %d",
+                operation_name,
+                limit,
+                max_limit,
+                max_limit,
+            )
+            limit = max_limit
 
     if limit is None:
         return connection_type(
