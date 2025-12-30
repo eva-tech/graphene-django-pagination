@@ -21,7 +21,6 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         order_by=None,
         extra_filter_meta=None,
         filterset_class=None,
-        hard_limit=None,
         *args,
         **kwargs,
     ):
@@ -31,8 +30,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         self._filterset_class = None
         self._extra_filter_meta = extra_filter_meta
         self._base_args = None
-        self._hard_limit = hard_limit or graphene_settings.RELAY_CONNECTION_MAX_LIMIT
-
+        kwargs["max_limit"] = kwargs.get("max_limit") or graphene_settings.RELAY_CONNECTION_MAX_LIMIT
         kwargs.setdefault("limit", Int(description="Query limit"))
         kwargs.setdefault("offset", Int(description="Query offset"))
         kwargs.setdefault("ordering", String(description="Query order"))
