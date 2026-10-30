@@ -3,7 +3,17 @@ from django.test.utils import CaptureQueriesContext
 from django.db import connection
 import pytest
 
-from .fake_project import TestItem, schema
+from decimal import Decimal
+
+from django_filters.filters import BaseInFilter, BaseRangeFilter, Filter
+
+from .fake_project import (
+    TestItem,
+    TestOwner,
+    TestProduct,
+    TestProductFilterSet,
+    schema,
+)
 
 import logging
 
@@ -671,3 +681,103 @@ class TestCountOptimization:
             count_queries = [q for q in queries if 'COUNT' in q.upper()]
 
             assert len(count_queries) >= 1, f"Expected at least one COUNT query for middle page, but found: {count_queries}"
+
+
+@pytest.fixture
+def product_data():
+    TestProduct.objects.all().delete()
+    TestOwner.objects.all().delete()
+    owner = TestOwner.objects.create(name="Owner")
+    products = [
+        TestProduct(owner=owner, name="Apple", value=10, price=Decimal("1.50")),
+        TestProduct(owner=owner, name="Banana", value=5, price=Decimal("0.25")),
+        TestProduct(owner=owner, name="Cherry", value=15, price=Decimal("3.00")),
+        TestProduct(owner=owner, name="Fig", value=3, price=Decimal("2.10")),
+    ]
+    TestProduct.objects.bulk_create(products)
+    return products
+
+
+def products_field():
+    return schema.query.products
+
+
+def products_args():
+    field = schema.graphql_schema.query_type.fields["products"]
+    return {name: str(arg.type) for name, arg in field.args.items()}
+
+
+class TestFilterArgumentTypes:
+    """Filter arguments keep the graphene-django 2.15 types"""
+
+    def test_uuid_foreign_key_filter_is_id(self):
+        """A foreign key to a UUID primary key is ID, not UUID"""
+        assert products_args()["owner"] == "ID"
+
+    def test_declared_in_and_range_filters_are_lists(self):
+        """Declared in/range filters are lists of String, like 2.15"""
+        args = products_args()
+        assert args["valueIn"] == "[String]"
+        assert args["valueRange"] == "[String]"
+        assert args["nameIn"] == "[String]"
+
+    def test_decimal_filters_are_float(self):
+        """Generated and declared decimal filters are Float, not Decimal"""
+        args = products_args()
+        assert args["price"] == "Float"
+        assert args["priceMax"] == "Float"
+
+
+class TestDeclaredCsvFilters:
+    """Declared in/range filters become plain filters that take the list"""
+
+    def test_declared_csv_filters_become_plain_filters(self):
+        """The field's FilterSet holds plain Filter objects with the same settings"""
+        base_filters = products_field().filterset_class.base_filters
+        for name in ("value_in", "value_range", "name_in"):
+            assert type(base_filters[name]) is Filter, name
+        assert base_filters["value_in"].field_name == "value"
+        assert base_filters["value_in"].lookup_expr == "in"
+        assert base_filters["value_range"].lookup_expr == "range"
+        assert base_filters["name_in"].method == "filter_name_in"
+
+    def test_user_filterset_is_not_mutated(self):
+        """Only graphene-django's FilterSet subclass changes, not the declared one"""
+        filterset_class = products_field().filterset_class
+        assert filterset_class is not TestProductFilterSet
+        assert issubclass(filterset_class, TestProductFilterSet)
+        assert isinstance(TestProductFilterSet.base_filters["value_in"], BaseInFilter)
+        assert isinstance(TestProductFilterSet.base_filters["value_range"], BaseRangeFilter)
+        assert isinstance(TestProductFilterSet.base_filters["name_in"], BaseInFilter)
+
+    def test_declared_in_filter_takes_a_list(self, client, product_data):
+        result = client.execute(
+            'query { products(valueIn: ["10", "5"], ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana"]
+
+    def test_declared_range_filter_takes_a_list(self, client, product_data):
+        result = client.execute(
+            'query { products(valueRange: ["5", "10"], ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana"]
+
+    def test_declared_in_filter_keeps_its_method(self, client, product_data):
+        result = client.execute(
+            'query { products(nameIn: ["Fig", "Cherry"], ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Cherry", "Fig"]
+
+    def test_decimal_filter_takes_a_float(self, client, product_data):
+        result = client.execute(
+            'query { products(priceMax: 1.5, ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana"]
