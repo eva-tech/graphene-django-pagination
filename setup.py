@@ -21,7 +21,7 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=[
         "django>=2.2.6",
-        "django-filter>=2.1.0",
+        "django-filter>=2.3.0",
         "graphene-django>=3.2.3,<4"
     ]
 )
