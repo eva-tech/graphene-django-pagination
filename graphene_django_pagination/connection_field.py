@@ -9,6 +9,7 @@ from graphene_django.settings import graphene_settings
 from graphene_django.utils import maybe_queryset
 
 from . import PageInfoExtra, PaginationConnection
+from .filtering import get_filtering_args_from_filterset, replace_declared_csv_filters
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,20 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
         kwargs.setdefault("ordering", String(description="Query order"))
 
         super(DjangoPaginationConnectionField, self).__init__(type, *args, **kwargs)
+
+    @property
+    def filterset_class(self):
+        if not self._filterset_class:
+            replace_declared_csv_filters(super().filterset_class)
+        return self._filterset_class
+
+    @property
+    def filtering_args(self):
+        if not self._filtering_args:
+            self._filtering_args = get_filtering_args_from_filterset(
+                self.filterset_class, self.node_type
+            )
+        return self._filtering_args
 
     @property
     def type(self):

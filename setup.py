@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="graphene-django-pagination",
-    version="1.1.5",
+    version="2.0.0",
     author="Instruct Developers",
     author_email="contato@instruct.com.br",
     description="This package adds offset-based pagination to Graphene-Django without using Graphene Relay.",
@@ -21,7 +21,7 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=[
         "django>=2.2.6",
-        "django-filter>=2.1.0",
-        "graphene-django>=2.6.0"
+        "django-filter>=2.3.0",
+        "graphene-django>=3.2.3,<4"
     ]
 )
