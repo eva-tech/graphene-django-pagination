@@ -7,11 +7,18 @@ from decimal import Decimal
 
 from django_filters.filters import BaseInFilter, BaseRangeFilter, Filter
 
+from graphene import relay
+from graphene_django import DjangoObjectType
+from graphene_django.filter import DjangoFilterConnectionField
+
+from graphene_django_pagination.connection_field import DjangoPaginationConnectionField
+
 from .fake_project import (
     TestItem,
     TestOwner,
     TestProduct,
     TestProductFilterSet,
+    TestProductType,
     schema,
 )
 
@@ -746,6 +753,38 @@ class TestDeclaredCsvFilters:
         filterset_class = products_field().filterset_class
         assert filterset_class is not TestProductFilterSet
         assert issubclass(filterset_class, TestProductFilterSet)
+        assert isinstance(TestProductFilterSet.base_filters["value_in"], BaseInFilter)
+        assert isinstance(TestProductFilterSet.base_filters["value_range"], BaseRangeFilter)
+        assert isinstance(TestProductFilterSet.base_filters["name_in"], BaseInFilter)
+
+    def test_fields_sharing_a_filterset_do_not_change_each_other(self):
+        """Each field replaces filters on its own subclass, not on a shared class"""
+
+        class TestProductNode(DjangoObjectType):
+            class Meta:
+                model = TestProduct
+                fields = ('id', 'name', 'value', 'price')
+                filterset_class = TestProductFilterSet
+                interfaces = (relay.Node,)
+                skip_registry = True
+
+        standard = DjangoFilterConnectionField(TestProductNode)
+        first = DjangoPaginationConnectionField(TestProductType)
+        second = DjangoPaginationConnectionField(TestProductType)
+
+        standard_filters = standard.filterset_class.base_filters
+        first_filterset = first.filterset_class
+        second_filterset = second.filterset_class
+
+        assert first_filterset is not second_filterset
+        assert first_filterset is not standard.filterset_class
+        for name in ("value_in", "value_range", "name_in"):
+            assert type(first_filterset.base_filters[name]) is Filter, name
+            assert type(second_filterset.base_filters[name]) is Filter, name
+            assert standard_filters[name] is not first_filterset.base_filters[name]
+        assert isinstance(standard_filters["value_in"], BaseInFilter)
+        assert isinstance(standard_filters["value_range"], BaseRangeFilter)
+        assert isinstance(standard_filters["name_in"], BaseInFilter)
         assert isinstance(TestProductFilterSet.base_filters["value_in"], BaseInFilter)
         assert isinstance(TestProductFilterSet.base_filters["value_range"], BaseRangeFilter)
         assert isinstance(TestProductFilterSet.base_filters["name_in"], BaseInFilter)
