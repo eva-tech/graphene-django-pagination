@@ -1,6 +1,7 @@
 pytest
-graphene==2.1.9
 pytest-mock
+Django==4.2.30
+graphene==3.4.3
+graphene-django==3.2.3
+graphql-core==3.2.13
 django-filter==22.1
-graphene-django==2.15.0
-Django==3.2.25
