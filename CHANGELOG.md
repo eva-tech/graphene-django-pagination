@@ -4,6 +4,7 @@
 
 - The minimum django-filter version is 2.3.0, the first one that imports on Django 3.2 and later.
 - Tests pin the filter argument types and run on the release B versions.
+- Generated `in`/`range` filters (from `Meta.fields`) are plain filters again, like graphene-django 2.15: an empty list does not filter. graphene-django 3 returned no rows for `<field>_In: []` and an error for `<field>_Range: []`.
 
 ## 2.0.0
 

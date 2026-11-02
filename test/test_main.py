@@ -820,3 +820,77 @@ class TestDeclaredCsvFilters:
         assert not result.get("errors"), f"Errors: {result.get('errors')}"
         names = [item["name"] for item in result["data"]["products"]["results"]]
         assert names == ["Apple", "Banana"]
+
+
+class TestGeneratedCsvFilters:
+    """Generated in/range filters become plain filters, like 2.15"""
+
+    def test_generated_filter_types(self):
+        """Generated in/range filters are lists of the field type, isnull is Boolean"""
+        args = products_args()
+        assert args["value_In"] == "[Int]"
+        assert args["value_Range"] == "[Int]"
+        assert args["owner_In"] == "[ID]"
+        assert args["owner_Isnull"] == "Boolean"
+
+    def test_generated_csv_filters_become_plain_filters(self):
+        """graphene-django 3's ListFilter and RangeFilter are replaced by Filter"""
+        base_filters = products_field().filterset_class.base_filters
+        for name in ("value__in", "value__range", "owner__in"):
+            assert type(base_filters[name]) is Filter, name
+        assert base_filters["value__in"].field_name == "value"
+        assert base_filters["value__in"].lookup_expr == "in"
+        assert base_filters["value__range"].lookup_expr == "range"
+
+    def test_generated_in_filter_takes_a_list(self, client, product_data):
+        result = client.execute(
+            'query { products(value_In: [10, 5], ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana"]
+
+    def test_generated_foreign_key_in_filter_takes_a_list(self, client, product_data):
+        owner_id = TestOwner.objects.get().pk
+        result = client.execute(
+            'query { products(owner_In: ["%s"], ordering: "name, asc") { results { name } } }'
+            % owner_id
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana", "Cherry", "Fig"]
+
+    def test_generated_range_filter_takes_a_list(self, client, product_data):
+        result = client.execute(
+            'query { products(value_Range: [5, 10], ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana"]
+
+    def test_generated_in_filter_ignores_an_empty_list(self, client, product_data):
+        """An empty list does not filter, like 2.15 (graphene-django 3 returns no rows)"""
+        result = client.execute(
+            'query { products(value_In: [], ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana", "Cherry", "Fig"]
+
+    def test_generated_range_filter_ignores_an_empty_list(self, client, product_data):
+        """An empty list does not filter, like 2.15 (graphene-django 3 raises an error)"""
+        result = client.execute(
+            'query { products(value_Range: [], ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana", "Cherry", "Fig"]
+
+    def test_declared_in_filter_ignores_an_empty_list(self, client, product_data):
+        """Declared in filters already skip an empty list; this keeps it that way"""
+        result = client.execute(
+            'query { products(valueIn: [], ordering: "name, asc") { results { name } } }'
+        )
+        assert not result.get("errors"), f"Errors: {result.get('errors')}"
+        names = [item["name"] for item in result["data"]["products"]["results"]]
+        assert names == ["Apple", "Banana", "Cherry", "Fig"]

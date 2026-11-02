@@ -80,8 +80,9 @@ class TestProductFilterSet(django_filters.FilterSet):
     class Meta:
         model = TestProduct
         fields = {
-            'owner': ['exact'],
+            'owner': ['exact', 'in', 'isnull'],
             'price': ['exact'],
+            'value': ['in', 'range'],
         }
 
     def filter_name_in(self, queryset, name, value):

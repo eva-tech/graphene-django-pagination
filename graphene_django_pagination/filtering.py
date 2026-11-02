@@ -4,9 +4,10 @@ graphene-django 3 types filter arguments from the model field: UUID foreign keys
 become ``UUID`` instead of ``ID``, and declared ``in``/``range`` filters lose their
 list type, and form ``DecimalField`` filters become ``Decimal`` instead of
 ``Float``. graphene-django 3 also stopped turning declared ``in``/``range``
-filters into plain filters, so they got a list where they expect CSV text. Clients generate their types from the schema, so this keeps the 2.15
-arguments. Copied from graphene-django 2.15.0 ``filter/utils.py`` with ``six``
-removed.
+filters into plain filters, so they got a list where they expect CSV text, and
+turns generated ones into filters that treat an empty list as "no rows". Clients
+generate their types from the schema, so this keeps the 2.15 arguments. Copied
+from graphene-django 2.15.0 ``filter/utils.py`` with ``six`` removed.
 """
 
 from django import forms
@@ -62,19 +63,20 @@ def get_filtering_args_from_filterset(filterset_class, type):
     return args
 
 
-def replace_declared_csv_filters(filterset_class):
-    """Turn declared ``in``/``range`` CSV filters into plain filters, like 2.15.
+def replace_csv_filters(filterset_class):
+    """Turn ``in``/``range`` filters into plain filters, like 2.15.
 
     Their arguments are lists, so the filter receives the list as is instead of
-    splitting a comma separated string. graphene-django 3 only does this for the
-    filters it generates.
+    splitting a comma separated string. A plain filter skips an empty list, while
+    graphene-django 3 turns generated filters into a ``ListFilter`` that returns no
+    rows and a ``RangeFilter`` that rejects it.
     """
     for name, filter_field in list(filterset_class.base_filters.items()):
-        if name not in filterset_class.declared_filters:
-            continue
         if filter_field.lookup_expr not in ["in", "range"]:
             continue
-        if not isinstance(filter_field, BaseCSVFilter):
+        # A declared filter that is not CSV already takes the list as is.
+        declared = name in filterset_class.declared_filters
+        if declared and not isinstance(filter_field, BaseCSVFilter):
             continue
         filterset_class.base_filters[name] = Filter(
             field_name=filter_field.field_name,

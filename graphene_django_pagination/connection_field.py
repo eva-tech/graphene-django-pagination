@@ -9,7 +9,7 @@ from graphene_django.settings import graphene_settings
 from graphene_django.utils import maybe_queryset
 
 from . import PageInfoExtra, PaginationConnection
-from .filtering import get_filtering_args_from_filterset, replace_declared_csv_filters
+from .filtering import get_filtering_args_from_filterset, replace_csv_filters
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class DjangoPaginationConnectionField(DjangoFilterConnectionField):
     @property
     def filterset_class(self):
         if not self._filterset_class:
-            replace_declared_csv_filters(super().filterset_class)
+            replace_csv_filters(super().filterset_class)
         return self._filterset_class
 
     @property
