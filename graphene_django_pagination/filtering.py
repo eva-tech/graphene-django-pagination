@@ -6,8 +6,10 @@ list type, and form ``DecimalField`` filters become ``Decimal`` instead of
 ``Float``. graphene-django 3 also stopped turning declared ``in``/``range``
 filters into plain filters, so they got a list where they expect CSV text, and
 turns generated ones into filters that treat an empty list as "no rows". Clients
-generate their types from the schema, so this keeps the 2.15 arguments. Copied
-from graphene-django 2.15.0 ``filter/utils.py`` with ``six`` removed.
+generate their types from the schema, so this keeps the 2.15 arguments. Adapted
+from graphene-django 2.15.0 ``filter/utils.py``: without ``six`` or
+``get_filterset_class``, with decimals converted to ``Float``, and with
+``replace_csv_filters`` applied after graphene-django 3 built the FilterSet.
 """
 
 from django import forms
